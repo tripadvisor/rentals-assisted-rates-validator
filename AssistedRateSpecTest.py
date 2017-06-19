@@ -15,12 +15,12 @@ import requests
 SECRET_KEY = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'
 BASE_URL = 'https://example.com'
 PATH = '/path/to/your/endpoint'
-PROPERTY_ID = 'abc123'
+EXTERNAL_LISTING_REFERENCE = 'abc123'
 
 CLIENT_NAME = 'tripadvisor-vr'
 TIMESTAMP_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 SIGNATURE_FORMAT = "VRS-HMAC-SHA512 timestamp={timestamp}, client={client}, signature={signature}"
-QUERY_STRING_FORMAT = 'guests={guests}&propertyId={property_id}&arrival={arrival}&departure={departure}&requestId={request_id}'
+QUERY_STRING_FORMAT = 'guests={guests}&externalListingReference={external_listing_reference}&arrival={arrival}&departure={departure}&requestId={request_id}'
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)s %(funcName)s %(message)s',
@@ -31,7 +31,7 @@ QueryParameters = collections.namedtuple(
     'QueryParameters',
     [
         'guests',
-        'property_id',
+        'external_listing_reference',
         'arrival',
         'departure',
     ]
@@ -42,49 +42,49 @@ QueryParameters = collections.namedtuple(
 TEST_CASES = {
     'successful_response': QueryParameters(
         guests=7,
-        property_id=PROPERTY_ID,
+        external_listing_reference=EXTERNAL_LISTING_REFERENCE,
         arrival='2018-07-01',
         departure='2018-08-01',
     ),
     'min_stay_violation': QueryParameters(
         guests=16,
-        property_id=PROPERTY_ID,
+        external_listing_reference=EXTERNAL_LISTING_REFERENCE,
         arrival='2018-08-01',
         departure='2018-08-05',
     ),
     'date_range_unavailable_violation': QueryParameters(
         guests=17,
-        property_id=PROPERTY_ID,
+        external_listing_reference=EXTERNAL_LISTING_REFERENCE,
         arrival='2018-08-01',
         departure='2018-08-02',
     ),
     'turnday_violation': QueryParameters(
         guests=18,
-        property_id=PROPERTY_ID,
+        external_listing_reference=EXTERNAL_LISTING_REFERENCE,
         arrival='2018-08-02',
         departure='2018-08-03',
     ),
     'property_inactive_error': QueryParameters(
         guests=10,
-        property_id=PROPERTY_ID,
+        external_listing_reference=EXTERNAL_LISTING_REFERENCE,
         arrival='2018-08-03',
         departure='2018-08-04',
     ),
     'date_range_invalid_error': QueryParameters(
         guests=11,
-        property_id=PROPERTY_ID,
+        external_listing_reference=EXTERNAL_LISTING_REFERENCE,
         arrival='2018-08-03',
         departure='2018-08-04',
     ),
     'party_size_invalid_error': QueryParameters(
         guests=12,
-        property_id=PROPERTY_ID,
+        external_listing_reference=EXTERNAL_LISTING_REFERENCE,
         arrival='2018-08-03',
         departure='2018-08-04',
     ),
     'other_error': QueryParameters(
         guests=13,
-        property_id=PROPERTY_ID,
+        external_listing_reference=EXTERNAL_LISTING_REFERENCE,
         arrival='2018-08-03',
         departure='2018-08-04',
     ),
@@ -267,7 +267,7 @@ def _get_request(query_parameters):
 
     query_string = QUERY_STRING_FORMAT.format(
         guests=query_parameters.guests,
-        property_id=query_parameters.property_id,
+        external_listing_reference=query_parameters.external_listing_reference,
         arrival=query_parameters.arrival,
         departure=query_parameters.departure,
         request_id=uuid.uuid4()
