@@ -11,6 +11,14 @@ import pytz
 import requests
 
 
+POSSIBLE_CURRENCIES = {'AUD', 'CAD', 'CHF', 'EUR', 'GBP', 'SEK', 'THB', 'USD'}
+MIN_STAY_VIOLATION = 'MIN_STAY_VIOLATION'
+TURNOVER_VIOLATION = 'TURNOVER_VIOLATION'
+DATE_RANGE_UNAVAILABLE = 'DATE_RANGE_UNAVAILABLE'
+VIOLATION_CODES = {MIN_STAY_VIOLATION, TURNOVER_VIOLATION, DATE_RANGE_UNAVAILABLE}
+TURNOVER_DAYS = {'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'}
+ERROR_REASONS = {'PROPERTY_INACTIVE', 'DATE_RANGE_INVALID', 'PARTY_SIZE_INVALID', 'RATE_UNAVAILABLE', 'OTHER'}
+
 # TODO: Update the following variables to match your system
 SECRET_KEY = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'
 BASE_URL = 'https://example.com'
@@ -94,65 +102,140 @@ TEST_CASES = {
 class AssistedRateSpecTest(unittest.TestCase):
     s = requests.Session()
 
+    def _send_request(self, request):
+        """
+
+        :type request: requests.PreparedRequest
+        :rtype: tuple[requests.Response, dict|None]
+        :return: tuple[response, response body as dict, if present]
+
+        """
+
+        response = self.s.send(request)
+
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+
+        if response.status_code == 200:
+            self.validate_200_response(body)
+        elif response.status_code == 400:
+            self.validate_400_response(body)
+        else:
+            raise RuntimeError('Unexpected HTTP response code')
+
+        return response, body
+
+    def validate_200_response(self, body):
+        self.assertIn('details', body)
+
+        details = body['details']
+
+        self.assertIn('baseRate', details)
+        self.assertGreater(details['baseRate']['amount'], 0)
+        self.assertIn(details['baseRate']['currency'], POSSIBLE_CURRENCIES)
+
+        self.assertIn('tax', details)
+        self.assertGreaterEqual(details['tax']['amount'], 0)
+        self.assertIn(details['tax']['currency'], POSSIBLE_CURRENCIES)
+
+        if 'deposit' in details:
+            self.assertGreater(details['deposit']['amount'], 0)
+            self.assertIn(details['deposit']['currency'], POSSIBLE_CURRENCIES)
+
+        if 'customFees' in details:
+            self.assertGreaterEqual(len(details['customFees']), 1)
+
+            for custom_fee in details['customFees']:
+                self.assertGreaterEqual(len(custom_fee['name']), 1)
+                self.assertLessEqual(len(custom_fee['name']), 255)
+
+                self.assertGreater(custom_fee['rate']['amount'], 0)
+                self.assertIn(custom_fee['rate']['currency'], POSSIBLE_CURRENCIES)
+
+        self.assertEqual(
+            {'baseRate', 'tax', 'deposit', 'customFees'} | set(details.keys()),
+            {'baseRate', 'tax', 'deposit', 'customFees'}
+        )
+
+        if 'eligibility' in body:
+            self.assertIn('tripViolations', body['eligibility'])
+            self.assertEqual(set(body['eligibility'].keys()), {'tripViolations'})
+
+            trip_violations = body['eligibility']['tripViolations']
+
+            self.assertGreaterEqual(len(trip_violations), 1)
+            self.assertEqual(
+                len(trip_violations),
+                len(set([trip_violation['violationCode'] for trip_violation in trip_violations]))
+            )
+
+            for trip_violation in trip_violations:
+                self.assertIn(trip_violation['violationCode'], VIOLATION_CODES)
+
+                if trip_violation['violationCode'] == TURNOVER_VIOLATION:
+                    self.assertEqual(set(trip_violation.keys()), {'violationCode', 'turnover'})
+                    self.assertIn(trip_violation['turnover'], TURNOVER_DAYS)
+                elif trip_violation['violationCode'] == MIN_STAY_VIOLATION:
+                    self.assertEqual(set(trip_violation.keys()), {'violationCode', 'minStay'})
+                    self.assertIsInstance(trip_violation['minStay'], int)
+                    self.assertGreater(trip_violation['minStay'], 1)
+                else:
+                    self.assertEqual(set(trip_violation.keys()), {'violationCode'})
+
+    def validate_400_response(self, body):
+        self.assertIn('errors', body)
+
+        errors = body['errors']
+
+        self.assertGreaterEqual(len(errors), 1)
+
+        for error in errors:
+            self.assertEqual(
+                {'reason', 'description'} | set(error.keys()),
+                {'reason', 'description'}
+            )
+
+            self.assertIn('reason', error)
+            self.assertIn(error['reason'], ERROR_REASONS)
+
+            if 'description' in error:
+                self.assertGreaterEqual(len(error['description']), 1)
+                self.assertLessEqual(len(error['description']), 255)
+
+        self.assertEqual(
+            len(errors),
+            len(set([e['reason'] for e in errors]))
+        )
+
     @unittest.skipIf('successful_response' not in TEST_CASES, 'Test case not implemented')
     def test_successful_response(self):
-        r = self.s.send(
-            _get_request(TEST_CASES['successful_response']),
-        )
-        
-        self.assertEqual(r.status_code, 200)
-        
-        r = r.json()
+        response, body = self._send_request(_get_request(TEST_CASES['successful_response']))
 
-        self.assertIn('details', r)
-        self.assertIn('baseRate', r['details'])
-        self.assertIn('tax', r['details'])
+        self.assertEqual(response.status_code, 200)
 
     @unittest.skipIf('min_stay_violation' not in TEST_CASES, 'Test case not implemented')
     def test_min_stay_violation(self):
-        r = self.s.send(
-            _get_request(TEST_CASES['min_stay_violation']),
-        )
+        response, body = self._send_request(_get_request(TEST_CASES['min_stay_violation']))
 
-        self.assertEqual(r.status_code, 200)
-
-        r = r.json()
-
-        self.assertIn('details', r)
-        self.assertIn('baseRate', r['details'])
-        self.assertIn('tax', r['details'])
-        self.assertIn('eligibility', r)
-        self.assertIn('tripViolations', r['eligibility'])
+        self.assertEqual(response.status_code, 200)
 
         min_stay_violations = [
-            v for v in r['eligibility']['tripViolations']
+            v for v in body['eligibility']['tripViolations']
             if v['violationCode'] == 'MIN_STAY_VIOLATION'
         ]
 
         self.assertEqual(len(min_stay_violations), 1)
 
-        self.assertIn('minStay', min_stay_violations[0])
-        self.assertIsInstance(min_stay_violations[0]['minStay'], int)
-        self.assertGreater(min_stay_violations[0]['minStay'], 0)
-
     @unittest.skipIf('date_range_unavailable_violation' not in TEST_CASES, 'Test case not implemented')
     def test_date_range_unavailable(self):
-        r = self.s.send(
-            _get_request(TEST_CASES['date_range_unavailable_violation']),
-        )
+        response, body = self._send_request(_get_request(TEST_CASES['date_range_unavailable_violation']))
 
-        self.assertEqual(r.status_code, 200)
-
-        r = r.json()
-
-        self.assertIn('details', r)
-        self.assertIn('baseRate', r['details'])
-        self.assertIn('tax', r['details'])
-        self.assertIn('eligibility', r)
-        self.assertIn('tripViolations', r['eligibility'])
+        self.assertEqual(response.status_code, 200)
 
         date_range_unavailable_violations = [
-            v for v in r['eligibility']['tripViolations']
+            v for v in body['eligibility']['tripViolations']
             if v['violationCode'] == 'DATE_RANGE_UNAVAILABLE'
         ]
 
@@ -160,44 +243,27 @@ class AssistedRateSpecTest(unittest.TestCase):
 
     @unittest.skipIf('turnday_violation' not in TEST_CASES, 'Test case not implemented')
     def test_turnday(self):
-        r = self.s.send(
-            _get_request(TEST_CASES['turnday_violation']),
-        )
+        response, body = self._send_request(_get_request(TEST_CASES['turnday_violation']))
 
-        self.assertEqual(r.status_code, 200)
-
-        r = r.json()
-
-        self.assertIn('details', r)
-        self.assertIn('baseRate', r['details'])
-        self.assertIn('tax', r['details'])
-        self.assertIn('eligibility', r)
-        self.assertIn('tripViolations', r['eligibility'])
+        self.assertEqual(response.status_code, 200)
 
         turnover_violations = [
-            v for v in r['eligibility']['tripViolations']
+            v for v in body['eligibility']['tripViolations']
             if v['violationCode'] == 'TURNOVER_VIOLATION'
         ]
 
         self.assertEqual(len(turnover_violations), 1)
 
-        self.assertIn('turnover', turnover_violations[0])
-        self.assertIn(turnover_violations[0]['turnover'], {'SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'})
-
     @unittest.skipIf('property_inactive_error' not in TEST_CASES, 'Test case not implemented')
     def test_property_inactive_error(self):
-        r = self.s.send(
-            _get_request(TEST_CASES['property_inactive_error']),
-        )
+        response, body = self._send_request(_get_request(TEST_CASES['property_inactive_error']))
 
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(response.status_code, 400)
 
-        r = r.json()
-
-        self.assertIn('errors', r)
+        self.assertIn('errors', body)
 
         property_inactive_errors = [
-            v for v in r['errors']
+            v for v in body['errors']
             if v['reason'] == 'PROPERTY_INACTIVE'
         ]
 
@@ -205,18 +271,14 @@ class AssistedRateSpecTest(unittest.TestCase):
 
     @unittest.skipIf('date_range_invalid_error' not in TEST_CASES, 'Test case not implemented')
     def test_date_range_invalid_error(self):
-        r = self.s.send(
-            _get_request(TEST_CASES['date_range_invalid_error']),
-        )
+        response, body = self._send_request(_get_request(TEST_CASES['date_range_invalid_error']))
 
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(response.status_code, 400)
 
-        r = r.json()
-
-        self.assertIn('errors', r)
+        self.assertIn('errors', body)
 
         property_inactive_errors = [
-            v for v in r['errors']
+            v for v in body['errors']
             if v['reason'] == 'DATE_RANGE_INVALID'
         ]
 
@@ -224,18 +286,14 @@ class AssistedRateSpecTest(unittest.TestCase):
 
     @unittest.skipIf('party_size_invalid_error' not in TEST_CASES, 'Test case not implemented')
     def test_party_size_invalid_error(self):
-        r = self.s.send(
-            _get_request(TEST_CASES['party_size_invalid_error']),
-        )
+        response, body = self._send_request(_get_request(TEST_CASES['party_size_invalid_error']))
 
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(response.status_code, 400)
 
-        r = r.json()
-
-        self.assertIn('errors', r)
+        self.assertIn('errors', body)
 
         property_inactive_errors = [
-            v for v in r['errors']
+            v for v in body['errors']
             if v['reason'] == 'PARTY_SIZE_INVALID'
         ]
 
@@ -243,18 +301,14 @@ class AssistedRateSpecTest(unittest.TestCase):
 
     @unittest.skipIf('other_error' not in TEST_CASES, 'Test case not implemented')
     def test_other_error(self):
-        r = self.s.send(
-            _get_request(TEST_CASES['other_error']),
-        )
+        response, body = self._send_request(_get_request(TEST_CASES['other_error']))
 
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(response.status_code, 400)
 
-        r = r.json()
-
-        self.assertIn('errors', r)
+        self.assertIn('errors', body)
 
         property_inactive_errors = [
-            v for v in r['errors']
+            v for v in body['errors']
             if v['reason'] == 'OTHER'
         ]
 
@@ -290,22 +344,21 @@ def _get_request(query_parameters):
         )
     )
 
-    logging.info(
-        json.dumps(
-            {
-                'method': r.method,
-                'path': PATH,
-                'query_string': query_string,
-                'body': body,
-                'timestamp': now.strftime(TIMESTAMP_FORMAT),
-                'client': CLIENT_NAME,
-                'secret': SECRET_KEY,
-                'signature': signature,
-            }
-        )
-    )
-
     r.headers['Authorization'] = signature
+
+    logging.info(
+        "Request {}".format(json.dumps({
+            'url': r.url,
+            'method': r.method,
+            'path': PATH,
+            'query_string': query_string,
+            'body': body,
+            'timestamp': now.strftime(TIMESTAMP_FORMAT),
+            'client': CLIENT_NAME,
+            'secret': SECRET_KEY,
+            'signature': signature,
+        }))
+    )
 
     return r.prepare()
 
