@@ -1,3 +1,6 @@
+"""
+AssistedRateSpectest
+"""
 import collections
 import datetime
 import hashlib
@@ -15,9 +18,12 @@ POSSIBLE_CURRENCIES = {'AUD', 'CAD', 'CHF', 'EUR', 'GBP', 'SEK', 'THB', 'USD'}
 MIN_STAY_VIOLATION = 'MIN_STAY_VIOLATION'
 TURNOVER_VIOLATION = 'TURNOVER_VIOLATION'
 DATE_RANGE_UNAVAILABLE = 'DATE_RANGE_UNAVAILABLE'
-VIOLATION_CODES = {MIN_STAY_VIOLATION, TURNOVER_VIOLATION, DATE_RANGE_UNAVAILABLE}
-TURNOVER_DAYS = {'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'}
-ERROR_REASONS = {'PROPERTY_INACTIVE', 'DATE_RANGE_INVALID', 'PARTY_SIZE_INVALID', 'RATE_UNAVAILABLE', 'OTHER'}
+VIOLATION_CODES = {MIN_STAY_VIOLATION,
+                   TURNOVER_VIOLATION, DATE_RANGE_UNAVAILABLE}
+TURNOVER_DAYS = {'MONDAY', 'TUESDAY', 'WEDNESDAY',
+                 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'}
+ERROR_REASONS = {'PROPERTY_INACTIVE', 'DATE_RANGE_INVALID',
+                 'PARTY_SIZE_INVALID', 'RATE_UNAVAILABLE', 'OTHER'}
 
 # TODO: Update the following variables to match your system
 SECRET_KEY = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'
@@ -110,6 +116,7 @@ TEST_CASES = {
 
 
 class AssistedRateSpecTest(unittest.TestCase):
+    """Class AssistedRatespecTest"""
     s = requests.Session()
 
     def _send_request(self, request):
@@ -138,6 +145,7 @@ class AssistedRateSpecTest(unittest.TestCase):
         return response, body
 
     def validate_200_response(self, body):
+        """validate_200_response"""
         self.assertIn('details', body)
 
         details = body['details']
@@ -162,7 +170,8 @@ class AssistedRateSpecTest(unittest.TestCase):
                 self.assertLessEqual(len(custom_fee['name']), 255)
 
                 self.assertGreater(custom_fee['rate']['amount'], 0)
-                self.assertIn(custom_fee['rate']['currency'], POSSIBLE_CURRENCIES)
+                self.assertIn(custom_fee['rate']
+                              ['currency'], POSSIBLE_CURRENCIES)
 
         self.assertEqual(
             {'baseRate', 'tax', 'deposit', 'customFees'} | set(details.keys()),
@@ -171,30 +180,36 @@ class AssistedRateSpecTest(unittest.TestCase):
 
         if 'eligibility' in body:
             self.assertIn('tripViolations', body['eligibility'])
-            self.assertEqual(set(body['eligibility'].keys()), {'tripViolations'})
+            self.assertEqual(set(body['eligibility'].keys()), {
+                'tripViolations'})
 
             trip_violations = body['eligibility']['tripViolations']
 
             self.assertGreaterEqual(len(trip_violations), 1)
             self.assertEqual(
                 len(trip_violations),
-                len(set([trip_violation['violationCode'] for trip_violation in trip_violations]))
+                len(set([trip_violation['violationCode']
+                         for trip_violation in trip_violations]))
             )
 
             for trip_violation in trip_violations:
                 self.assertIn(trip_violation['violationCode'], VIOLATION_CODES)
 
                 if trip_violation['violationCode'] == TURNOVER_VIOLATION:
-                    self.assertEqual(set(trip_violation.keys()), {'violationCode', 'turnover'})
+                    self.assertEqual(set(trip_violation.keys()), {
+                        'violationCode', 'turnover'})
                     self.assertIn(trip_violation['turnover'], TURNOVER_DAYS)
                 elif trip_violation['violationCode'] == MIN_STAY_VIOLATION:
-                    self.assertEqual(set(trip_violation.keys()), {'violationCode', 'minStay'})
+                    self.assertEqual(set(trip_violation.keys()), {
+                        'violationCode', 'minStay'})
                     self.assertIsInstance(trip_violation['minStay'], int)
                     self.assertGreater(trip_violation['minStay'], 1)
                 else:
-                    self.assertEqual(set(trip_violation.keys()), {'violationCode'})
+                    self.assertEqual(set(trip_violation.keys()), {
+                        'violationCode'})
 
     def validate_400_response(self, body):
+        """validate_400_response"""
         self.assertIn('errors', body)
 
         errors = body['errors']
@@ -221,13 +236,17 @@ class AssistedRateSpecTest(unittest.TestCase):
 
     @unittest.skipIf('successful_response' not in TEST_CASES, 'Test case not implemented')
     def test_successful_response(self):
-        response, body = self._send_request(_get_request(TEST_CASES['successful_response']))
+        """test_successful_response"""
+        response, body = self._send_request(
+            _get_request(TEST_CASES['successful_response']))
 
         self.assertEqual(response.status_code, 200)
 
     @unittest.skipIf('min_stay_violation' not in TEST_CASES, 'Test case not implemented')
     def test_min_stay_violation(self):
-        response, body = self._send_request(_get_request(TEST_CASES['min_stay_violation']))
+        """test_min_stay_violation"""
+        response, body = self._send_request(
+            _get_request(TEST_CASES['min_stay_violation']))
 
         self.assertEqual(response.status_code, 200)
 
@@ -240,7 +259,9 @@ class AssistedRateSpecTest(unittest.TestCase):
 
     @unittest.skipIf('date_range_unavailable_violation' not in TEST_CASES, 'Test case not implemented')
     def test_date_range_unavailable(self):
-        response, body = self._send_request(_get_request(TEST_CASES['date_range_unavailable_violation']))
+        """test_data_range_unavailable"""
+        response, body = self._send_request(_get_request(
+            TEST_CASES['date_range_unavailable_violation']))
 
         self.assertEqual(response.status_code, 200)
 
@@ -253,7 +274,9 @@ class AssistedRateSpecTest(unittest.TestCase):
 
     @unittest.skipIf('turnday_violation' not in TEST_CASES, 'Test case not implemented')
     def test_turnday(self):
-        response, body = self._send_request(_get_request(TEST_CASES['turnday_violation']))
+        """test_turnday"""
+        response, body = self._send_request(
+            _get_request(TEST_CASES['turnday_violation']))
 
         self.assertEqual(response.status_code, 200)
 
@@ -266,7 +289,9 @@ class AssistedRateSpecTest(unittest.TestCase):
 
     @unittest.skipIf('property_inactive_error' not in TEST_CASES, 'Test case not implemented')
     def test_property_inactive_error(self):
-        response, body = self._send_request(_get_request(TEST_CASES['property_inactive_error']))
+        """test_property_inactive_error"""
+        response, body = self._send_request(
+            _get_request(TEST_CASES['property_inactive_error']))
 
         self.assertEqual(response.status_code, 400)
 
@@ -281,7 +306,9 @@ class AssistedRateSpecTest(unittest.TestCase):
 
     @unittest.skipIf('date_range_invalid_error' not in TEST_CASES, 'Test case not implemented')
     def test_date_range_invalid_error(self):
-        response, body = self._send_request(_get_request(TEST_CASES['date_range_invalid_error']))
+        """test_data_range_invalid_error"""
+        response, body = self._send_request(
+            _get_request(TEST_CASES['date_range_invalid_error']))
 
         self.assertEqual(response.status_code, 400)
 
@@ -296,7 +323,9 @@ class AssistedRateSpecTest(unittest.TestCase):
 
     @unittest.skipIf('party_size_invalid_error' not in TEST_CASES, 'Test case not implemented')
     def test_party_size_invalid_error(self):
-        response, body = self._send_request(_get_request(TEST_CASES['party_size_invalid_error']))
+        """test_party_size_invalid_error"""
+        response, body = self._send_request(
+            _get_request(TEST_CASES['party_size_invalid_error']))
 
         self.assertEqual(response.status_code, 400)
 
@@ -311,7 +340,9 @@ class AssistedRateSpecTest(unittest.TestCase):
 
     @unittest.skipIf('other_error' not in TEST_CASES, 'Test case not implemented')
     def test_other_error(self):
-        response, body = self._send_request(_get_request(TEST_CASES['other_error']))
+        """test_other_error"""
+        response, body = self._send_request(
+            _get_request(TEST_CASES['other_error']))
 
         self.assertEqual(response.status_code, 400)
 
@@ -337,7 +368,7 @@ def _get_request(query_parameters):
         request_id=uuid.uuid4()
     )
 
-    r = requests.Request(
+    r_r = requests.Request(
         'GET',
         "{}{}?{}".format(BASE_URL, PATH, query_string),
     )
@@ -346,7 +377,7 @@ def _get_request(query_parameters):
         timestamp=now.strftime(TIMESTAMP_FORMAT),
         client=CLIENT_NAME,
         signature=_get_signature(
-            r.method,
+            r_r.method,
             PATH,
             query_string,
             now,
@@ -354,12 +385,12 @@ def _get_request(query_parameters):
         )
     )
 
-    r.headers['Authorization'] = signature
+    r_r.headers['Authorization'] = signature
 
     logging.info(
         "Request {}".format(json.dumps({
-            'url': r.url,
-            'method': r.method,
+            'url': r_r.url,
+            'method': r_r.method,
             'path': PATH,
             'query_string': query_string,
             'body': body,
@@ -370,7 +401,7 @@ def _get_request(query_parameters):
         }))
     )
 
-    return r.prepare()
+    return r_r.prepare()
 
 
 def _get_signature(
@@ -388,7 +419,8 @@ def _get_signature(
         hashlib.sha512(body.encode('utf-8')).hexdigest()
     ])
 
-    canonical_request_hash = hashlib.sha512(canonical_request.encode('utf-8')).hexdigest()
+    canonical_request_hash = hashlib.sha512(
+        canonical_request.encode('utf-8')).hexdigest()
 
     return hmac.new(SECRET_KEY.encode('utf-8'), canonical_request_hash.encode('utf-8'), hashlib.sha512).hexdigest()
 
