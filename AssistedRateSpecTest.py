@@ -331,6 +331,7 @@ def _get_request(query_parameters):
 
     query_string = QUERY_STRING_FORMAT.format(
         guests=query_parameters.guests,
+        external_account_reference=query_parameters.external_account_reference,
         external_listing_reference=query_parameters.external_listing_reference,
         arrival=query_parameters.arrival,
         departure=query_parameters.departure,
