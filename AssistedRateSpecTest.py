@@ -138,6 +138,38 @@ class AssistedRateSpecTest(unittest.TestCase):
         return response, body
 
     def validate_200_response(self, body):
+        if 'eligibility' in body:
+            self.assertIn('tripViolations', body['eligibility'])
+            self.assertEqual(set(body['eligibility'].keys()), {'tripViolations'})
+
+            trip_violations = body['eligibility']['tripViolations']
+
+            self.assertGreaterEqual(len(trip_violations), 1)
+            self.assertEqual(
+                len(trip_violations),
+                len(set([trip_violation['violationCode'] for trip_violation in trip_violations]))
+            )
+
+            for trip_violation in trip_violations:
+                self.assertIn(trip_violation['violationCode'], VIOLATION_CODES)
+
+                if trip_violation['violationCode'] == TURNOVER_VIOLATION:
+                    self.assertEqual(set(trip_violation.keys()), {'violationCode', 'turnover'})
+                    self.assertIn(trip_violation['turnover'], TURNOVER_DAYS)
+                elif trip_violation['violationCode'] == MIN_STAY_VIOLATION:
+                    self.assertEqual(set(trip_violation.keys()), {'violationCode', 'minStay'})
+                    self.assertIsInstance(trip_violation['minStay'], int)
+                    self.assertGreater(trip_violation['minStay'], 1)
+                else:
+                    self.assertEqual(set(trip_violation.keys()), {'violationCode'})
+            
+            if 'details' in body:
+                self.validate_details_content(body)
+        else:
+            self.validate_details_content(body)
+            
+            
+    def validate_details_content(self, body):
         self.assertIn('details', body)
 
         details = body['details']
@@ -168,31 +200,7 @@ class AssistedRateSpecTest(unittest.TestCase):
             {'baseRate', 'tax', 'deposit', 'customFees'} | set(details.keys()),
             {'baseRate', 'tax', 'deposit', 'customFees'}
         )
-
-        if 'eligibility' in body:
-            self.assertIn('tripViolations', body['eligibility'])
-            self.assertEqual(set(body['eligibility'].keys()), {'tripViolations'})
-
-            trip_violations = body['eligibility']['tripViolations']
-
-            self.assertGreaterEqual(len(trip_violations), 1)
-            self.assertEqual(
-                len(trip_violations),
-                len(set([trip_violation['violationCode'] for trip_violation in trip_violations]))
-            )
-
-            for trip_violation in trip_violations:
-                self.assertIn(trip_violation['violationCode'], VIOLATION_CODES)
-
-                if trip_violation['violationCode'] == TURNOVER_VIOLATION:
-                    self.assertEqual(set(trip_violation.keys()), {'violationCode', 'turnover'})
-                    self.assertIn(trip_violation['turnover'], TURNOVER_DAYS)
-                elif trip_violation['violationCode'] == MIN_STAY_VIOLATION:
-                    self.assertEqual(set(trip_violation.keys()), {'violationCode', 'minStay'})
-                    self.assertIsInstance(trip_violation['minStay'], int)
-                    self.assertGreater(trip_violation['minStay'], 1)
-                else:
-                    self.assertEqual(set(trip_violation.keys()), {'violationCode'})
+            
 
     def validate_400_response(self, body):
         self.assertIn('errors', body)
