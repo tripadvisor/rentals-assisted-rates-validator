@@ -14,8 +14,9 @@ import requests
 POSSIBLE_CURRENCIES = {'AUD', 'CAD', 'CHF', 'EUR', 'GBP', 'SEK', 'THB', 'USD'}
 MIN_STAY_VIOLATION = 'MIN_STAY_VIOLATION'
 TURNOVER_VIOLATION = 'TURNOVER_VIOLATION'
+CHECKOUT_DAY_VIOLATION = 'CHECKOUT_DAY_VIOLATION'
 DATE_RANGE_UNAVAILABLE = 'DATE_RANGE_UNAVAILABLE'
-VIOLATION_CODES = {MIN_STAY_VIOLATION, TURNOVER_VIOLATION, DATE_RANGE_UNAVAILABLE}
+VIOLATION_CODES = {MIN_STAY_VIOLATION, TURNOVER_VIOLATION, DATE_RANGE_UNAVAILABLE, CHECKOUT_DAY_VIOLATION}
 TURNOVER_DAYS = {'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'}
 ERROR_REASONS = {'PROPERTY_INACTIVE', 'DATE_RANGE_INVALID', 'PARTY_SIZE_INVALID', 'RATE_UNAVAILABLE', 'OTHER'}
 
@@ -73,6 +74,13 @@ TEST_CASES = {
     ),
     'turnday_violation': QueryParameters(
         guests=18,
+        external_listing_reference=EXTERNAL_LISTING_REFERENCE,
+        external_account_reference=EXTERNAL_ACCOUNT_REFERENCE,
+        arrival='2018-08-02',
+        departure='2018-08-03',
+    ),
+    'checkout_day_violation': QueryParameters(
+        guests=19,
         external_listing_reference=EXTERNAL_LISTING_REFERENCE,
         external_account_reference=EXTERNAL_ACCOUNT_REFERENCE,
         arrival='2018-08-02',
@@ -138,6 +146,16 @@ class AssistedRateSpecTest(unittest.TestCase):
         return response, body
 
     def validate_200_response(self, body):
+        if 'eligibility' in body:
+            self.validate_eligiblity_content(body)
+            
+            if 'details' in body:
+                self.validate_details_content(body)
+        else:
+            self.validate_details_content(body)
+            
+            
+    def validate_details_content(self, body):
         self.assertIn('details', body)
 
         details = body['details']
@@ -168,31 +186,36 @@ class AssistedRateSpecTest(unittest.TestCase):
             {'baseRate', 'tax', 'deposit', 'customFees'} | set(details.keys()),
             {'baseRate', 'tax', 'deposit', 'customFees'}
         )
+            
+    def validate_eligiblity_content(self, body):
+        self.assertIn('tripViolations', body['eligibility'])
+        self.assertEqual(set(body['eligibility'].keys()), {'tripViolations'})
 
-        if 'eligibility' in body:
-            self.assertIn('tripViolations', body['eligibility'])
-            self.assertEqual(set(body['eligibility'].keys()), {'tripViolations'})
+        trip_violations = body['eligibility']['tripViolations']
 
-            trip_violations = body['eligibility']['tripViolations']
+        self.assertGreaterEqual(len(trip_violations), 1)
+        self.assertEqual(
+            len(trip_violations),
+            len(set([trip_violation['violationCode'] for trip_violation in trip_violations]))
+        )
 
-            self.assertGreaterEqual(len(trip_violations), 1)
-            self.assertEqual(
-                len(trip_violations),
-                len(set([trip_violation['violationCode'] for trip_violation in trip_violations]))
-            )
+        for trip_violation in trip_violations:
+            self.assertIn(trip_violation['violationCode'], VIOLATION_CODES)
 
-            for trip_violation in trip_violations:
-                self.assertIn(trip_violation['violationCode'], VIOLATION_CODES)
-
-                if trip_violation['violationCode'] == TURNOVER_VIOLATION:
-                    self.assertEqual(set(trip_violation.keys()), {'violationCode', 'turnover'})
-                    self.assertIn(trip_violation['turnover'], TURNOVER_DAYS)
-                elif trip_violation['violationCode'] == MIN_STAY_VIOLATION:
-                    self.assertEqual(set(trip_violation.keys()), {'violationCode', 'minStay'})
-                    self.assertIsInstance(trip_violation['minStay'], int)
-                    self.assertGreater(trip_violation['minStay'], 1)
-                else:
-                    self.assertEqual(set(trip_violation.keys()), {'violationCode'})
+            if trip_violation['violationCode'] == TURNOVER_VIOLATION:
+                self.assertEqual(set(trip_violation.keys()), {'violationCode', 'turnover'})
+                self.assertIn(trip_violation['turnover'], TURNOVER_DAYS)
+            elif trip_violation['violationCode'] == MIN_STAY_VIOLATION:
+                self.assertEqual(set(trip_violation.keys()), {'violationCode', 'minStay'})
+                self.assertIsInstance(trip_violation['minStay'], int)
+                self.assertGreater(trip_violation['minStay'], 1)
+            elif trip_violation['violationCode'] == CHECKOUT_DAY_VIOLATION:
+                self.assertEqual(set(trip_violation.keys()), {'violationCode', 'checkoutDays'})
+                self.assertIsInstance(trip_violation['checkoutDays'], list)
+                self.assertGreater(len(trip_violation['checkoutDays']), 0)
+                self.assertTrue(set(trip_violation['checkoutDays']).issubset(set(TURNOVER_DAYS)))
+            else:
+                self.assertEqual(set(trip_violation.keys()), {'violationCode'})
 
     def validate_400_response(self, body):
         self.assertIn('errors', body)
@@ -263,6 +286,19 @@ class AssistedRateSpecTest(unittest.TestCase):
         ]
 
         self.assertEqual(len(turnover_violations), 1)
+
+    @unittest.skipIf('checkout_day_violation' not in TEST_CASES, 'Test case not implemented')
+    def test_checkout_day_violation(self):
+        response, body = self._send_request(_get_request(TEST_CASES['checkout_day_violation']))
+
+        self.assertEqual(response.status_code, 200)
+
+        checkout_day_violations = [
+            v for v in body['eligibility']['tripViolations']
+            if v['violationCode'] == 'CHECKOUT_DAY_VIOLATION'
+        ]
+
+        self.assertEqual(len(checkout_day_violations), 1)
 
     @unittest.skipIf('property_inactive_error' not in TEST_CASES, 'Test case not implemented')
     def test_property_inactive_error(self):
